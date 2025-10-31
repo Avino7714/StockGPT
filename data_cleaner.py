@@ -3,7 +3,7 @@ import pandas as pd
 import glob
 import torch
 from torch.utils.data import DataLoader, Dataset, ConcatDataset
-from typing import List, Tuple, Dict, Iterator, Iterable, Optional
+from typing import List, Tuple, Dict,Iterable, Optional, Callable
 import os
 from stock_tokenizer import StockTokenizer
 
@@ -19,9 +19,11 @@ class DataCleanerAssembler:
             str | os.PathLike | List[str | os.PathLike]
         ),  # more explicit, Will not use the stock from cfg config
         is_batch: bool,
+        reader : Optional[Callable[str, pd.DataFrame| pd.Series]] = None,
         is_return: bool = False,  # needed for stock tokenizer, tells whether dataset is returns or not
     ):
 
+        self.reader = reader 
         self.stock_path = stock_path
         self.is_batch = is_batch
         self.error_stocks = []
@@ -33,12 +35,15 @@ class DataCleanerAssembler:
     def __clean_read_single_file__(self, file):
 
         try:
-            _data = pd.read_csv(
-                file,
-                usecols=["Date", "Close"],
-                parse_dates=["Date"],
-                index_col="Date",
-            ).squeeze()
+            if self.reader is not None:
+                _data = self.reader(file)
+            else:
+                _data = pd.read_csv(
+                    file,
+                    usecols=["Date", "Close"],
+                    parse_dates=["Date"],
+                    index_col="Date",
+                ).squeeze()
 
             # in case we have 1 row, this becomes a number.
             if not isinstance(_data, pd.Series):

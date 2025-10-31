@@ -41,7 +41,7 @@ class MonthDataCleanerAssembler(DataCleanerAssembler):
 # ============================================
 
 
-class MonthStockTokenizer(nn.Module):  # StockTokenizer):
+class MonthStockTokenizer(torch.utils.data.Dataset):  # StockTokenizer):
 
     "A replica of the stock tokenizer class for monthly returns. Does not inherit StockTokenizer class."
 
@@ -80,9 +80,12 @@ class MonthStockTokenizer(nn.Module):  # StockTokenizer):
 
         # forward rolling
         indexer = pd.api.indexers.FixedForwardWindowIndexer(window_size=self.window)
-        self.target_dataset = (
-            self.input_dataset.rolling(window=indexer, min_periods=1).mean().dropna()
-        )
+        forward_window_avg = stock_dataset.rolling(window = indexer, min_periods=1).mean()
+        self.target_dataset = forward_window_avg.pct_change().dropna()
+        
+        #self.target_dataset = (
+        #    self.input_dataset.rolling(window=indexer, min_periods=1).mean().dropna()
+        #)
         # regular rolling
         # self.target_dataset = self.input_dataset.rolling(window).mean().dropna()
 
@@ -106,6 +109,7 @@ class MonthStockTokenizer(nn.Module):  # StockTokenizer):
     # --------------------------------------------------
 
     def integerize_dataset(self, by):
+
         # integerize inputs
         self.input_dataset = (
             self.input_dataset.interpolate()
@@ -139,6 +143,7 @@ class MonthStockTokenizer(nn.Module):  # StockTokenizer):
     # --------------------------------------------------
 
     def binning(self):
+
         self.input_dataset = self.vocab.encode(self.input_dataset)
         self.target_dataset = self.vocab.encode(self.target_dataset)
 
@@ -157,13 +162,15 @@ class MonthStockTokenizer(nn.Module):  # StockTokenizer):
         for i in range(0, nrows - self.input_batch_size, self.stride):
             input_chunk = self.input_dataset.iloc[i : i + self.input_batch_size]
             target_chunk = self.target_dataset.iloc[  # important
-                i + self.target_batch_size : i
+                i
+                + self.target_batch_size : i
                 + self.input_batch_size
                 + self.target_batch_size
             ]
 
             if (
-                not input_chunk.empty and not target_chunk.empty
+                not input_chunk.empty
+                and not target_chunk.empty
                 # and input_chunk.shape[0] == self.input_batch_size
                 # and target_chunk.shape[0] == self.target_batch_size
             ):

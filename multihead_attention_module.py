@@ -16,9 +16,6 @@ class MultiheadAttentionModule(nn.Module):
         self.embedding_dim = embedding_dim
         self.context_dim = context_dim
         self.num_heads = num_heads
-        assert (
-            self.context_dim % self.num_heads == 0
-        ), "multi-head split parameter incorrect"
         self.head_dim = self.context_dim // self.num_heads
         self.out_proj = nn.Linear(context_dim, context_dim)
 

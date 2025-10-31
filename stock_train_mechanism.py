@@ -1,11 +1,16 @@
 import torch
-from ohlcv_gpt_model import OHLCV_GPTModel
 from stock_loss_prediction import (
     calc_loss_batch,
     calc_loss_loader,
+    generate_next_stock,
+    generate_next_stock_simple,
 )
-import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
+from gpt_model import GPTModel
+import matplotlib.pyplot as plt
+from matplotlib.ticker import MaxNLocator  # no clue what this does
+from datetime import datetime as dt
 import json
 import os
 
@@ -41,7 +46,7 @@ class StockTrainer:
 
     def __init__(
         self,
-        model: OHLCV_GPTModel,
+        model: GPTModel,
         cfg: dict,
         load_from_checkpoint: str | bool = False,
         device="cpu",
@@ -125,6 +130,23 @@ class StockTrainer:
 
     # --------------------------------------------
 
+    # Not developing now :
+    #
+    # def engage_training(
+    #     tokenized_dataloader_dataframe: pd.DataFrame,
+    #     num_epochs: int = 1,
+    #     eval_freq: int = 10,
+    #     eval_iter: int = 5,
+    # ):
+    #     """
+    #     Use a Tokenized stock dataloader dataframe to supply inputs to train.
+    #     Mandatory for both train loader and val loaders to be present.
+    #     For a regular data structure, use the other overloaded function.
+    #     Convenience function
+    #     """
+
+    # --------------------------------------------
+
     def evaluate_model(self, train_loader, val_loader, eval_iter):
         self.model.eval()  # pause model training
         with torch.no_grad():
@@ -168,6 +190,30 @@ class StockTrainer:
 
     # --------------------------------------------
 
+    def generate_and_print_sample(self, start_sample: pd.Series, max_new_tokens):
+        self.model.eval()
+        context_length = self.model.context_length
+        encoded = self.model.vocab.encode(start_sample)
+        encoded = torch.tensor(encoded).unsqueeze(0)
+
+        with torch.no_grad():
+            new_tokens = (
+                generate_next_stock_simple(  # wont work for stocks. need multinomial.
+                    self.model,
+                    idx=encoded,
+                    max_new_tokens=max_new_tokens,
+                    context_size=context_length,
+                    result_with_input=True,
+                )
+            )
+
+        decoded_predictions = self.model.vocab.decode(new_tokens.squeeze(0).tolist())
+
+        print(decoded_predictions)
+        self.model.train()
+
+    # --------------------------------------------
+
     def plot_losses(self):
         _epochs = np.linspace(
             start=0, stop=self.epochs, num=len(self.evaluated_train_loss)
@@ -187,7 +233,7 @@ class StockTrainer:
         ax1.set_xlabel("Epochs as seen as number of checkpoints")
         ax1.set_ylabel("Loss")
         ax1.legend(loc="upper right")
-        # ax1.xaxis.set_major_locator(MaxNLocator(integer=True))
+        ax1.xaxis.set_major_locator(MaxNLocator(integer=True))
 
         ax2 = ax1.twiny()
         ax2.plot(_tokens, self.evaluated_train_loss, alpha=0)
@@ -220,7 +266,7 @@ class StockTrainer:
             self.model.load_weights_into_gpt(pth_file, device)
         self.optimizer.load_state_dict(
             torch.load(pth_file.split(".")[0] + "_optimizer.pth")
-        )
+        )  # We don't need to load optimizer state into device? Pls Confirm
         print("Loaded optimizer into model successfully")
 
     # --------------------------------------------
@@ -234,6 +280,11 @@ class StockTrainer:
 
         _data = {
             "time": dt.now().strftime("%a %d %b %Y, %I:%M%p"),
+            # "device": (
+            #     self.device.type
+            #     if isinstance(self.device, torch.device)
+            #     else self.device
+            # ),
             "epochs": self.epochs,
             "steps_trained": self.steps_trained,
             "train_loss": self.evaluated_train_loss,
@@ -242,13 +293,6 @@ class StockTrainer:
             "model_parameters_file": save_name,
             "optimizer_parameters_file": save_name.split(".")[0] + "_optimizer.pth",
         }
-
-        # causing a lot of problems. So removing this
-        # "device": (
-        #     self.device.type
-        #     if isinstance(self.device, torch.device)
-        #     else self.device
-        # ),
 
         with open(meta_name, "w") as json_file:
             json.dump(_data, json_file)
